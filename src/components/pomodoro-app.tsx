@@ -51,7 +51,6 @@ export default function PomodoroAppComponent() {
           completeCurrentTask(selectedDuration * 60)
         } else {
           setTime(newTime)
-          setTotalTimeToday(prev => prev + (now - (lastUpdateTimeRef.current || now)) / 1000)
         }
 
         lastUpdateTimeRef.current = now
@@ -113,6 +112,7 @@ export default function PomodoroAppComponent() {
       completeCurrentTask(elapsedTime)
       setIsActive(false)
       setIsPaused(false)
+      setTotalTimeToday(prev => prev + elapsedTime)
       setTime(selectedDuration * 60)
     }
   }
