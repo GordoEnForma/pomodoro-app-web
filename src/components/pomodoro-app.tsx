@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
-import {  CheckCircle, PauseCircle, PlayCircle, StopCircle } from 'lucide-react'
+import { CheckCircle, PauseCircle, PlayCircle, StopCircle } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 
 interface Task {
   id: number
@@ -16,41 +17,56 @@ interface Task {
   duration: number
 }
 
-export default function PomodoroAppComponent() {
+export default function PomodoroApp() {
   const [time, setTime] = useState(25 * 60)
   const [isActive, setIsActive] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
   const [currentTask, setCurrentTask] = useState('')
-  const [selectedDuration, setSelectedDuration] = useState(25)
+  const [selectedDuration, setSelectedDuration] = useState('25')
+  const [customDuration, setCustomDuration] = useState('')
   const [completedPomodoros, setCompletedPomodoros] = useState(0)
   const [totalTimeToday, setTotalTimeToday] = useState(0)
   const [showStopDialog, setShowStopDialog] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState('default')
   const startTimeRef = useRef<number | null>(null)
   const lastUpdateTimeRef = useRef<number | null>(null)
   const animationFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission)
+    }
+  }, [])
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission()
+      setNotificationPermission(permission)
+    }
+  }
+
+  useEffect(() => {
     if (isActive && !isPaused) {
-      startTimeRef.current = Date.now() - ((selectedDuration * 60) - time) * 1000
+      const duration = selectedDuration === 'custom' ? parseInt(customDuration) : parseInt(selectedDuration)
+      startTimeRef.current = Date.now() - ((duration * 60) - time) * 1000
       lastUpdateTimeRef.current = Date.now()
 
       const updateTimer = () => {
         const now = Date.now()
         const elapsed = now - (startTimeRef.current || now)
-        const newTime = Math.max(0, selectedDuration * 60 - Math.floor(elapsed / 1000))
+        const newTime = Math.max(0, duration * 60 - Math.floor(elapsed / 1000))
 
         if (newTime === 0) {
           setIsActive(false)
           setIsPaused(false)
-          new Notification("Pomodoro Timer", {
-            body: "¡Tiempo completado! La tarea ha sido marcada como completada.",
-          })
+          sendNotification("¡Tiempo completado!", "La tarea ha sido marcada como completada.")
           setCompletedPomodoros(prev => prev + 1)
-          setTotalTimeToday(prev => prev + selectedDuration * 60)
-          completeCurrentTask(selectedDuration * 60)
+          setTotalTimeToday(prev => prev + duration * 60)
+          completeCurrentTask(duration * 60)
         } else {
           setTime(newTime)
+          // setTotalTimeToday(prev => prev + (now - (lastUpdateTimeRef.current || now)) / 1000)
         }
 
         lastUpdateTimeRef.current = now
@@ -68,13 +84,14 @@ export default function PomodoroAppComponent() {
         cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [isActive, isPaused, selectedDuration])
+  }, [isActive, isPaused, selectedDuration, customDuration])
 
   const toggleTimer = () => {
     if (isPaused || !isActive) {
       setIsActive(true)
       setIsPaused(false)
-      startTimeRef.current = Date.now() - ((selectedDuration * 60) - time) * 1000
+      const duration = selectedDuration === 'custom' ? parseInt(customDuration) : parseInt(selectedDuration)
+      startTimeRef.current = Date.now() - ((duration * 60) - time) * 1000
     } else {
       setIsPaused(true)
     }
@@ -87,8 +104,12 @@ export default function PomodoroAppComponent() {
   }
 
   const startSession = () => {
+    if (notificationPermission === 'default') {
+      requestNotificationPermission()
+    }
     setIsActive(true)
-    setTime(selectedDuration * 60)
+    const duration = selectedDuration === 'custom' ? parseInt(customDuration) : parseInt(selectedDuration)
+    setTime(duration * 60)
     startTimeRef.current = Date.now()
     lastUpdateTimeRef.current = Date.now()
   }
@@ -112,8 +133,8 @@ export default function PomodoroAppComponent() {
       completeCurrentTask(elapsedTime)
       setIsActive(false)
       setIsPaused(false)
-      setTotalTimeToday(prev => prev + elapsedTime)
-      setTime(selectedDuration * 60)
+      const duration = selectedDuration === 'custom' ? parseInt(customDuration) : parseInt(selectedDuration)
+      setTime(duration * 60)
     }
   }
 
@@ -121,6 +142,12 @@ export default function PomodoroAppComponent() {
     const minutes = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const sendNotification = (title: string, body: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body })
+    }
   }
 
   return (
@@ -145,7 +172,7 @@ export default function PomodoroAppComponent() {
               <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
                 Duración de la sesión (minutos)
               </label>
-              <Select onValueChange={(value) => setSelectedDuration(Number(value))}>
+              <Select value={selectedDuration} onValueChange={setSelectedDuration}>
                 <SelectTrigger id="duration">
                   <SelectValue placeholder="Selecciona la duración" />
                 </SelectTrigger>
@@ -155,13 +182,24 @@ export default function PomodoroAppComponent() {
                       {duration} minutos
                     </SelectItem>
                   ))}
+                  <SelectItem value="custom">Tiempo personalizado</SelectItem>
                 </SelectContent>
               </Select>
+              {selectedDuration === 'custom' && (
+                <Input
+                  type="number"
+                  placeholder="Ingrese los minutos"
+                  value={customDuration}
+                  onChange={(e) => setCustomDuration(e.target.value)}
+                  min="1"
+                  className="mt-2"
+                />
+              )}
             </div>
             <Button 
               onClick={startSession} 
               className="w-full" 
-              disabled={!currentTask.trim() || !selectedDuration}
+              disabled={!currentTask.trim() || (selectedDuration === 'custom' && !customDuration)}
             >
               Empezar Sesión
             </Button>
@@ -175,7 +213,7 @@ export default function PomodoroAppComponent() {
               {currentTask}
             </p>
             <div className="text-6xl font-bold text-center mb-4 text-red-500">{formatTime(time)}</div>
-            <Progress value={(selectedDuration * 60 - time) / (selectedDuration * 60) * 100} className="mb-4" />
+            <Progress value={(selectedDuration === 'custom' ? parseInt(customDuration) * 60 - time : parseInt(selectedDuration) * 60 - time) / (selectedDuration === 'custom' ? parseInt(customDuration) * 60 : parseInt(selectedDuration) * 60) * 100} className="mb-4" />
             <div className="flex justify-center space-x-4">
               <Button onClick={toggleTimer} variant="outline" size="icon">
                 {isActive && !isPaused ? <PauseCircle className="h-6 w-6" /> : <PlayCircle className="h-6 w-6" />}
